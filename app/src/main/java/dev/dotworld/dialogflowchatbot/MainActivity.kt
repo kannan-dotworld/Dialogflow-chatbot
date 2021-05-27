@@ -1,19 +1,27 @@
 package dev.dotworld.dialogflowchatbot
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import com.google.api.gax.core.FixedCredentialsProvider
 import com.google.auth.oauth2.GoogleCredentials
 import com.google.auth.oauth2.ServiceAccountCredentials
 import com.google.cloud.dialogflow.v2beta1.*
 import com.google.common.collect.Lists
+import pub.devrel.easypermissions.EasyPermissions
 import java.io.InputStream
 import java.util.*
 
@@ -23,24 +31,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener,
     companion object {
         private val TAG = MainActivity::class.java.simpleName
     }
+    private var permissionsRequired = arrayOf(
+        Manifest.permission.RECORD_AUDIO,
 
+    )
     private var sessionsClient: SessionsClient? = null
     private var session: SessionName? = null
     private val uuid: String = UUID.randomUUID().toString()
-    private var mAudioManager: AudioManager? = null
-    private var mStreamVolume = 0
 
     private var textToSpeech: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
     private var speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-
+   private var builderAlert: AlertDialog? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        if(hasMic()){
+
         initChatBot()
-        startListening()
+        startListening()}else{
+            requestPermissionForMicrophone()
+        }
         textToSpeech = TextToSpeech(this, this)
-        mAudioManager = getSystemService(AUDIO_SERVICE) as AudioManager?;
     }
 
     private fun initChatBot() {
@@ -67,7 +79,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener,
                 speechRecognizer.cancel()
             }
             val botReply = response.queryResult.fulfillmentText
-            mAudioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, mStreamVolume, 0);
             playVoice(botReply)
         }
     }
@@ -144,12 +155,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener,
 
     private fun startListening() {
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        mAudioManager?.getStreamVolume(AudioManager.STREAM_MUSIC).also {
-            if (it != null) {
-                mStreamVolume = it
-            }
-        }
-        mAudioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);
         speechRecognizer.setRecognitionListener(recognitionListener)
         speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
         speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en")
@@ -173,6 +178,93 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener,
             startListening()
         }
     }
+
+    private fun hasMic(): Boolean {
+        return EasyPermissions.hasPermissions(this, Manifest.permission.RECORD_AUDIO)
+
+    }
+
+    private fun requestPermissionForMicrophone() {
+        if (ActivityCompat.checkSelfPermission(this,permissionsRequired[0])!= PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, permissionsRequired[0])
+            ) {
+                getAlertDialog()
+            } else {
+                ActivityCompat.requestPermissions(
+                    this,
+                    permissionsRequired,
+                    101
+                )
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) {
+            var allgranted = false
+            for (i in grantResults.indices) {
+                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    allgranted = true
+                } else {
+                    allgranted = false
+                    break
+                }
+            }
+
+            if (allgranted) {
+                Log.d(TAG, "onRequestPermissionsResult: all permission allowed")
+            } else if (ActivityCompat.shouldShowRequestPermissionRationale(this,permissionsRequired[0])
+            ) {
+
+                getAlertDialog()
+
+            } else {
+                Toast.makeText(this, "permissions_needed", Toast.LENGTH_LONG).show()
+                if (grantResults.isNotEmpty()) {
+                    val i = Intent()
+                    i.action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                    i.addCategory(Intent.CATEGORY_DEFAULT)
+                    i.data = Uri.parse("package:" + this.packageName)
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    i.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+                    i.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                    startActivity(i)
+                    finish()
+                }
+            }
+        }
+    }
+
+    private fun getAlertDialog() {
+        try {
+            if (builderAlert != null && builderAlert?.isShowing == true) {
+                return
+            } else {
+                val builder = AlertDialog.Builder(this)
+                builder.setTitle("Need Multiple Permissions")
+                builder.setMessage("This app needs permissions.")
+                builder.setPositiveButton("Grant") { dialog, which ->
+                    dialog.cancel()
+                    ActivityCompat.requestPermissions(
+                        this,
+                        permissionsRequired,
+                        101
+                    )
+                }
+                builder.setCancelable(false)
+                builderAlert = builder.create()
+                builderAlert?.show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getAlertDialog: ${e.message}")
+        }
+    }
+
 
 
 }

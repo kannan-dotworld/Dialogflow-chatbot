@@ -55,8 +55,5 @@ dependencies {
     implementation 'com.google.cloud:google-cloud-dialogflow:3.1.0'
     implementation 'io.grpc:grpc-okhttp:1.38.0'
 
-//    // new
-//    implementation platform('com.google.cloud:libraries-bom:20.5.0')
-//
-//    implementation 'com.google.cloud:google-cloud-dialogflow'
+    implementation 'pub.devrel:easypermissions:3.0.0'
 }
